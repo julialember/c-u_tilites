@@ -9,7 +9,6 @@ FILE *work_with_arguments(int argc, char *argv[], FILE *to_read[], int *files_re
 int main(int argc, char *argv[]) {
     FILE *to_read[MAXFILES];
     int files_readed = 0;
-    to_read[files_readed] = stdin;
     FILE *output = work_with_arguments(argc, argv, to_read, &files_readed); 
     if (output == NULL) {
         for (int i = 0; i < files_readed; i++) {
@@ -19,6 +18,7 @@ int main(int argc, char *argv[]) {
     }
     char buffer[BUFSIZ];
     size_t bytes_readed = 0;
+    if (files_readed == 0) to_read[files_readed++] = stdin;
     for (int i = 0; i < files_readed; i++) {
         while ((bytes_readed = fread(buffer, 1, sizeof buffer, to_read[i])) > 0) 
             fwrite(buffer, 1, bytes_readed, output); 
@@ -31,6 +31,7 @@ int main(int argc, char *argv[]) {
 
 
 FILE *work_with_arguments(int argc, char *argv[], FILE *to_read[], int *files_readed) {
+    FILE *output_file = stdout;
     for (int i = 1; i < argc && *files_readed < MAXFILES; i++) {
         if (argv[i][0] == '-') {
             if (argv[i][1] == '\0') to_read[(*files_readed)++] = stdin;
@@ -39,13 +40,15 @@ FILE *work_with_arguments(int argc, char *argv[], FILE *to_read[], int *files_re
                 return NULL;
             }
             else if (argc > i + 1){
-                FILE *output_file = fopen(argv[i+1], "w+");
+                output_file = fopen(argv[++i], "w");
                 if (output_file == NULL) {
-                    cat_error("can't open file: %s", argv[i+1]);
+                    cat_error("can't open file: %s", argv[i]);
+                    return NULL;
                 }
-                return output_file;
+            } else {
+                cat_error("need to [OUTPUT] file near the [-to]");
+                return NULL;
             }
-            else return stdout;
         }
         else {
             FILE *next_from = fopen(argv[i], "r");
@@ -56,7 +59,7 @@ FILE *work_with_arguments(int argc, char *argv[], FILE *to_read[], int *files_re
     if (*files_readed >= MAXFILES) {
         cat_error("%d files maximum!\nfiles after %s -was not readed", MAXFILES, argv[*files_readed]);
     }
-    return stdout;
+    return output_file;
 }
 
 inline void cat_error(const char *format, ...) {
