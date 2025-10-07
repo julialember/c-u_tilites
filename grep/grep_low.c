@@ -66,9 +66,21 @@ int find_lines(GrepInfo *grep) {
     ssize_t bytes_readed = 0;
     char *start = buffer;
     size_t len = 0;
-    while (all_len < BUFSIZ && 
-            (bytes_readed = read(grep->where_dis, buffer, BUFSIZ)) > 0) 
-        while ((len = find_line(start)) > 0 && all_len + len < BUFSIZ) {
+    if (grep->where_dis == STDIN_FILENO) {
+        while (all_len < sizeof answer_lines && 
+                (bytes_readed = read(STDIN_FILENO, buffer, sizeof buffer)) > 0) {
+            if (strstr(buffer, grep->pattern)) {
+                if (write(grep->out_dis, buffer, bytes_readed) == ERROR) {
+                    grep_error("error with writing");
+                    clean_grep(grep);
+                }
+            } 
+        }
+    }
+    else while (all_len < sizeof answer_lines && 
+        (bytes_readed = read(grep->where_dis, buffer, sizeof buffer)) > 0) {
+            start = buffer;
+            while ((len = find_line(start)) != 0 && all_len + len < BUFSIZ) {
             start[len] = '\0';
             if (strstr(start, grep->pattern)){
                 strncpy(answer_lines+all_len, start, len);
@@ -77,12 +89,15 @@ int find_lines(GrepInfo *grep) {
             }
             start += len+1;
         }
+    } 
+        
     if (bytes_readed == ERROR) {
         grep_error("error with reading");
         clean_grep(grep);
         return ERROR;
     }
-    else if (write(grep->out_dis, answer_lines, all_len) == ERROR) {
+    else if (grep->where_dis != STDIN_FILENO &&
+            write(grep->out_dis, answer_lines, all_len) == ERROR) {
         grep_error("error with write");
         clean_grep(grep);
         return ERROR;
