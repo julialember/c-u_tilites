@@ -18,15 +18,16 @@ void grep_error(const char *format, ...);
 GrepInfo *grep_init();
 int get_outfile(GrepInfo*, char**);
 int get_searchfile(GrepInfo*, char**);
-int get_pattern(GrepInfo*, char**);
 void clean_grep(GrepInfo*);
 size_t find_line(char *sub);
+int find_lines(GrepInfo *);
+
 
 #define MAXLEN 255
 #define MAXLINES 32
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
+    if (argc < 3) {
         grep_error("You need enter at least 1 arguemnt: [TO FIND]");
         return 1;
     }
@@ -35,7 +36,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     argv++;
-    while (*argv){
+    while(*argv){
         if ((*argv)[0] == '-') {
             if (strcmp(*argv, "-to") == 0) {
                 if (get_outfile(grep, ++argv) == ERROR) return 1;
@@ -46,53 +47,55 @@ int main(int argc, char *argv[]) {
                 clean_grep(grep);
                 return 1;
             } 
-        } else if (!grep->pattern) {
-            if (get_pattern(grep, argv) == ERROR) 
-                    return 1;
-        }
+        } else if (!grep->pattern) grep->pattern = *argv;
         else if (get_searchfile(grep, argv) == ERROR) return 1;
         argv++;
     }
-    char buffer[BUFSIZ];   
-    char answer_lines[MAXLEN * MAXLINES];
+    if (!grep->pattern) {
+        grep_error("please set [PATTERN]");
+        clean_grep(grep);
+        return 1;
+    }
+    return find_lines(grep) == ERROR ? 1 : 0;
+}
+
+int find_lines(GrepInfo *grep) {
     size_t all_len = 0;
+    char buffer[BUFSIZ];   
+    char answer_lines[BUFSIZ];
     ssize_t bytes_readed = 0;
     char *start = buffer;
-    int len = 0;
-    char temp = 0;
-    while ((bytes_readed = read(grep->where_dis, buffer, BUFSIZ)) > 0) 
-        while ((len = find_line(start)) > 0) {
-            temp = start[len];
+    size_t len = 0;
+    while (all_len < BUFSIZ && 
+            (bytes_readed = read(grep->where_dis, buffer, BUFSIZ)) > 0) 
+        while ((len = find_line(start)) > 0 && all_len + len < BUFSIZ) {
             start[len] = '\0';
             if (strstr(start, grep->pattern)){
                 strncpy(answer_lines+all_len, start, len);
                 all_len += len;
-                answer_lines[all_len-1] = '\n';
+                answer_lines[all_len++] = '\n';
             }
-            start[len] = temp;
             start += len+1;
         }
-    if (bytes_readed == -1) {
+    if (bytes_readed == ERROR) {
         grep_error("error with reading");
         clean_grep(grep);
-        return 1;
+        return ERROR;
     }
-    else if (write(grep->out_dis, answer_lines, all_len) == -1) {
-        grep_error("error with writing");
+    else if (write(grep->out_dis, answer_lines, all_len) == ERROR) {
+        grep_error("error with write");
         clean_grep(grep);
-        return 1;
-    };
+        return ERROR;
+    }
     clean_grep(grep);
-    return 0;
+    return SUCCESS;
 }
 
 size_t find_line(char *sub) {
-    if (!sub) return -1;
     size_t len = 0;
     while (*(sub+len) != '\0' && *(sub+len) != '\n') 
         len++;
-    if (*(sub+len) == '\0') return -1;
-    return len == 0 ? -1 : len;
+    return len;
 }
 
 void clean_grep(GrepInfo* f) {
@@ -114,41 +117,19 @@ GrepInfo *grep_init() {
     return set;
 }
 
-int get_pattern(GrepInfo* info, char** argv) {
-    if (!info) {
-        grep_error("error with [PATTERN]");
-        clean_grep(info);
-        return ERROR;
-    } else 
-        info->pattern = *argv;
-    return SUCCESS;
-}
-
 int get_searchfile(GrepInfo* info, char** argv) {
-    if (!info) {
-        grep_error("error with [SEARCH IN] file");
+    info->where_dis = open(*argv, O_RDONLY, 0644);
+    if (info->where_dis == -1) {
+        grep_error("error with opening file: %s", *argv);
         clean_grep(info);
         return ERROR;
-    } else {
-        info->where_dis = open(*argv, O_RDONLY, 0644);
-        if (info->where_dis == -1) {
-            grep_error("error with opening file: %s", *argv);
-            clean_grep(info);
-            return -1;
-        }
     }
     return SUCCESS; 
 }
 
 int get_outfile(GrepInfo* info, char **argv) {
-    if (!argv || !*argv) {
+    if (!argv) {
         grep_error("need [OUTPUT] near the [-to]");
-        clean_grep(info);
-        return ERROR;
-    }
-    else if (!info) {
-        grep_error("error with [TO FIND] searching");
-        clean_grep(info);
         return ERROR;
     } else {
         info->out_dis = open(*argv, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -169,4 +150,3 @@ inline void grep_error(const char *format, ...) {
     fprintf(stderr, "\n");
     va_end(args);
 }
-
