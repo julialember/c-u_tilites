@@ -80,7 +80,7 @@ int find_lines(GrepInfo *grep) {
     else while (all_len < sizeof answer_lines && 
         (bytes_readed = read(grep->where_dis, buffer, sizeof buffer)) > 0) {
             start = buffer;
-            while ((len = find_line(start)) != 0 && all_len + len < BUFSIZ) {
+            while ((len = find_line(start)) != 0 && all_len + len - 1 < BUFSIZ) {
             start[len] = '\0';
             if (strstr(start, grep->pattern)){
                 strncpy(answer_lines+all_len, start, len);
